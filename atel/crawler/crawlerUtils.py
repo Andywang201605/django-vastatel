@@ -37,3 +37,12 @@ def setLogger(
         file.setLevel(filelevel)
         file.setFormatter(formatter)
         logger.addHandler(file)
+
+import os
+### make new directory
+def makedirs(path):
+    '''
+    making new directory if the path is not existed
+    '''
+    if not os.path.exists(path):
+        os.makedirs(path)
