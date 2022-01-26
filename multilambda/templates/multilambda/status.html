@@ -1,0 +1,12 @@
+<meta http-equiv="refresh" content="10">
+
+<h1>status page for task {{taskname}}</h1>
+
+<ul>
+    {%for event, status in statusjson.items%}
+    <li>{{event}} - {{status}}</li>
+    {% endfor %}
+</ul>
+
+<p>Note: this page will be automatically refreshed every 10 seconds</p>
+<p>click <a href="{% url 'multilambda:webpage' taskname %}">this link</a> for the full information</p>

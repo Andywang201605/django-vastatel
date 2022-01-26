@@ -1,0 +1,30 @@
+<!-- css part -->
+{% load static %}
+<link rel="stylesheet" type="text/css" href="{% static 'multilambda/formstyle.css' %}" />
+<!-- end of css part -->
+
+<h1> Multiwavelength Image Query </h1>
+
+<form action = "{% url 'multilambda:submit' %}" method="post">
+    {% csrf_token %}
+    <!-- coordinate input -->
+    coordinate: <input type="text" name="coord" />
+    <input type="radio" name="coord_box" id="radeccheck" value="1" checked="checked" />
+    <label for="radeccheck">J2000</label>
+    <input type="radio" name="coord_box" id="glcheck" value="2"/>
+    <label for="glcheck">Gal</label> <hr />
+    {% for band, radius, surveys in instrumentForm %} 
+        <font id="band"> {{band}} </font> 
+        <font> radius </font>
+        <input type="text" name="{{band}}_r" size="3" value={{radius}} />
+        <font> (arcsec) </font>
+        <p />
+        {% for survey in surveys %}
+            <input type="checkbox" name="{{band}}" id="{{band}}{{forloop.counter}}" value="{{forloop.counter}}" checked="checked"/>
+            <label for="{{band}}{{forloop.counter}}">{{survey}}</label>
+        {% endfor %}
+        <hr />
+    {% endfor %}
+
+<p><input type="submit" value = "submit" /></p>
+</form>

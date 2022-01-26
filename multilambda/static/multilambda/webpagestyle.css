@@ -1,0 +1,14 @@
+div.multicutout {
+    width: 24%;
+    display: inline-block;
+    text-align: center;
+    /* border-style: solid; */
+    /* border-color: aqua; */
+}
+
+img.multicutout {
+    max-width: 100%;
+    max-height: 100%;
+    margin: auto;
+    display: block;
+}

@@ -1,0 +1,1 @@
+{"uplim_style": {"marker": "o", "ms": 10, "color": "black", "mfc": "None", "ls": "None", "uplims": true}, "forced_style": {"marker": "o", "ms": 10, "color": "gray", "ls": "None", "label": "forced"}, "selavy_style": {"marker": "o", "ms": 10, "color": "black", "ls": "None", "label": "selavy"}, "uplim": 5}

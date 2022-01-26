@@ -1,0 +1,54 @@
+{% load static %}
+{% get_static_prefix as STATIC_PREFIX %}
+<!-- see https://docs.djangoproject.com/en/dev/ref/templates/builtins/#get-static-prefix -->
+<link rel="stylesheet" type="text/css" href="{% static 'multilambda/webpagestyle.css' %}" />
+
+
+<h2> Multiwavelength Page for Task {{taskname}}</h2>
+<p>coordinate: {{ra}}, {{dec}}</p>
+<p><b>note: due to vasttools compatibility, epochs after epoch12 are not supported </b></p>
+
+<hr />
+{% if isvast %}
+<p> VAST lightcurve </p>
+<img src="{{STATIC_PREFIX}}{{taskname}}/img/VASTlightcurve.png" width="60%">
+<hr />
+<p> archival data </p>
+<img src="{{STATIC_PREFIX}}{{taskname}}/img/archival_lightcurve.png" width="66%">
+<img src="{{STATIC_PREFIX}}{{taskname}}/img/wise-cc.png" width="22%">
+<hr />
+
+<p> VAST Stokes I (300 arcsec) </p>
+<img src="{{STATIC_PREFIX}}{{taskname}}/img/StokesI_300.jpg" width="90%">
+<p> VAST Stokes V (300 arcsec) </p>
+<img src="{{STATIC_PREFIX}}{{taskname}}/img/StokesV_300.jpg" width="90%">
+<hr />
+{% endif %}
+<p>Multiwavelength Cutouts</p>
+{% for survey, path in overlaypath%}
+<div class="multicutout">
+    <p style="font-size: smaller;">{{survey}}</p>
+    <img src="{{STATIC_PREFIX}}{{path}}" width="95%" />
+    <!-- <img src="{% static 'multilambda/noimage.jpg' %}" onerror="this.onerror=null;this.src='{{STATIC_PREFIX}}{{taskname}}/img/{{survey}}_{{radius}}.png';" width="95%" /> -->
+</div>
+{% endfor %}
+
+{% if not isvast %}
+<hr />
+<p> wise cc-plot </p>
+<img src="{{STATIC_PREFIX}}{{taskname}}/img/wise-cc.png" width="30%">
+{% endif %}
+
+{% if isvast %}
+<hr />
+<p> VAST Stokes I (600 arcsec) </p>
+<img src="{{STATIC_PREFIX}}{{taskname}}/img/StokesI_600.jpg" width="80%">
+{% endif %}
+
+<!-- 
+    arguments used in this page
+    - taskname
+    - ra, dec
+    - surveyjson
+
+ -->
