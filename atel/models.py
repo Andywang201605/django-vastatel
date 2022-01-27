@@ -8,20 +8,19 @@ class AtelSub(models.Model):
     def __str__(self):
         return self.subject
 
-class AtelMain(models.Model):
-    atelID = models.IntegerField('ATel ID', primary_key=True)
-    atelSub = models.ManyToManyField(AtelSub)
-    # atelSrc = models.ManyToManyField(AtelSource)
-
-    def __str__(self):
-        return f'ATel#{self.atelID}'
-
-
 class AtelSource(models.Model):
     srcra = models.FloatField('R.A. of the source')
     srcdec = models.FloatField('Decl. of the source')
-    atelID = models.ManyToManyField(AtelMain)
     taskname = models.CharField(max_length=200)
 
     def __str__(self):
         return f'AtelSrc#{self.pk}'
+
+class AtelMain(models.Model):
+    atelID = models.IntegerField('ATel ID', primary_key=True)
+    atelSub = models.ManyToManyField(AtelSub)
+    atelSrc = models.ManyToManyField(AtelSource)
+
+    def __str__(self):
+        return f'ATel#{self.atelID}'
+
