@@ -172,7 +172,6 @@ class TitleSearch:
     Search for coordinates in Simbad based on the telegram's title
     '''
     def __init__(self, title, phraseMaxWord=3, module='main'):
-        self.title = title.strip().lower() ### convert to lower case first...
         self.maxword = phraseMaxWord
         self.logger = logging.getLogger(f'{module}.titlesearch')
 
@@ -185,7 +184,7 @@ class TitleSearch:
         if withPrefix:
             prefix_words = ['of', 'from', 'in', 'blazar', 'star', 'nova', ]
             for i, word in enumerate(titlesplit):
-                if word in prefix_words or i == 0: # i==0 for at the beginning of the title...
+                if word.lower() in prefix_words or i == 0: # i==0 for at the beginning of the title...
                     for j in range(self.maxword):
                         words = titlesplit[i+1:i+j+2]
                         objectNames.append(' '.join(words))
