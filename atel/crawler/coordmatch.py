@@ -29,6 +29,10 @@ class CoordMatch:
         function supports different starts/middles/ends pattern
         P.S.: this looks like a good tool for interpreting regex: https://regexr.com/3f4vo
         '''
+        ### character before the match
+        _beforeChars = ['^', '\s', '\<', '\(']
+        _beforeRes = [r'(?<={})'.format(char) for char in _beforeChars]
+        self.reAhead = r'(?:{})'.format('|'.join(_beforeRes))
         ### format for R.A.
         #           #   RA or R.A.  #          #         (J2000.0)       #          #      date       #
         self.startRA = r'''(((R\.?\s*A\.?\s*|Coord\s*)(\(?\s*J2000(\.0)?\s*\)?\s*)?(=|:|\s)|(\d{4}-\d{2}-\d{2}))\s*)?'''
@@ -63,7 +67,7 @@ class CoordMatch:
                             )
                     )"""
 
-        reSex = r'''(?:(?<=^)|(?<=\s)|(?<=\>)|(?<=\())(?P<coordSex> %s %s %s %s %s %s)''' % (self.startRA, raSex, self.endRA, self.startDec, decSex, self.endDec)
+        reSex = r'''%s(?P<coordSex> %s %s %s %s %s %s)''' % (self.reAhead, self.startRA, raSex, self.endRA, self.startDec, decSex, self.endDec)
         reSexEx = re.compile(reSex, re.S | re.I | re.X)
 
         ### convert match group to coordinate ###
@@ -92,7 +96,7 @@ class CoordMatch:
         # TODO: remove Sex match first and then perform Deg match
         raDeg = r'''(?P<raDeg>(([0-3]\d{2})|(\d{2})|\d)(\.\d{3,}))'''
         decDeg = r'''(?P<decDeg>[\+\-\–]?([0-8]?\d(\.\d{3,})))''' # given the precision of the instruments, we assert that all decimal coordinates are with decimal places
-        reDeg = r'''(?:(?<=^)|(?<=\s)|(?<=\>)|(?<=\())(?P<coordDeg> %s %s %s %s %s %s)''' % (self.startRA, raDeg, self.endRA, self.startDec, decDeg, self.endDec)
+        reDeg = r'''%s(?P<coordDeg> %s %s %s %s %s %s)''' % (self.reAhead, self.startRA, raDeg, self.endRA, self.startDec, decDeg, self.endDec)
         reDegEx = re.compile(reDeg, re.S | re.I | re.X)
 
         ### convert match group to coordinate ###
