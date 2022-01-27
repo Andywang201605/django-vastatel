@@ -1,9 +1,11 @@
 ### this is a separate script mainly focus on matching coordinates in html/txt
 import logging
 import re
+from sys import excepthook
 from bs4 import BeautifulSoup
 import requests
 
+from astroquery.simbad import Simbad
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 
@@ -61,7 +63,7 @@ class CoordMatch:
                             )
                     )"""
 
-        reSex = r'''(?:(?<=^)|(?<=\s)|(?<=\>))(?P<coordSex> %s %s %s %s %s %s)''' % (self.startRA, raSex, self.endRA, self.startDec, decSex, self.endDec)
+        reSex = r'''(?:(?<=^)|(?<=\s)|(?<=\>)|(?<=\())(?P<coordSex> %s %s %s %s %s %s)''' % (self.startRA, raSex, self.endRA, self.startDec, decSex, self.endDec)
         reSexEx = re.compile(reSex, re.S | re.I | re.X)
 
         ### convert match group to coordinate ###
@@ -90,7 +92,7 @@ class CoordMatch:
         # TODO: remove Sex match first and then perform Deg match
         raDeg = r'''(?P<raDeg>(([0-3]\d{2})|(\d{2})|\d)(\.\d{3,}))'''
         decDeg = r'''(?P<decDeg>[\+\-\–]?([0-8]?\d(\.\d{3,})))''' # given the precision of the instruments, we assert that all decimal coordinates are with decimal places
-        reDeg = r'''(?:(?<=^)|(?<=\s)|(?<=\>))(?P<coordDeg> %s %s %s %s %s %s)''' % (self.startRA, raDeg, self.endRA, self.startDec, decDeg, self.endDec)
+        reDeg = r'''(?:(?<=^)|(?<=\s)|(?<=\>)|(?<=\())(?P<coordDeg> %s %s %s %s %s %s)''' % (self.startRA, raDeg, self.endRA, self.startDec, decDeg, self.endDec)
         reDegEx = re.compile(reDeg, re.S | re.I | re.X)
 
         ### convert match group to coordinate ###
@@ -145,7 +147,7 @@ class TNSQuery:
         coord: string
             coordinate of the object - in the format of HH:MM:SS.SSS DD:MM:SS.SS
         '''
-        ### try get the html page
+        ### try to get the html page
         tnsrespond = False; attempt = 0
         while not tnsrespond:
             try:
@@ -160,3 +162,84 @@ class TNSQuery:
 
         ### parse coordinate
         return self._findcoord_()
+
+class TitleSearch:
+    '''
+    Search for coordinates in Simbad based on the telegram's title
+    '''
+    def __init__(self, title, phraseMaxWord=3, module='main'):
+        self.title = title.strip().lower() ### convert to lower case first...
+        self.maxword = phraseMaxWord
+        self.logger = logging.getLogger(f'{module}.titlesearch')
+
+
+    def _splittitle_(self, withPrefix=True):
+        objectNames = []
+        ### replace special characters in the title
+        self.title = self.title.replace(':',' ')
+        titlesplit = self.title.split()
+        if withPrefix:
+            prefix_words = ['of', 'from', 'in', 'blazar', 'star', 'nova', ]
+            for i, word in enumerate(titlesplit):
+                if word in prefix_words or i == 0: # i==0 for at the beginning of the title...
+                    for j in range(self.maxword):
+                        words = titlesplit[i+1:i+j+2]
+                        objectNames.append(' '.join(words))
+        else: # search all title...
+            for i, word in enumerate(titlesplit):
+                for j in range(self.maxword):
+                    words = titlesplit[i+1:i+j+2]
+                    objectNames.append(' '.join(words))
+        self.logger.debug('object for searching - {}'.format(objectNames))
+        self._objectNames = objectNames
+        return objectNames
+
+    def _bulksearch_(self, sleeptime=3.0, max_attempt=5, removeThreshold=2):
+        '''perform a search on a list of Objects'''
+        searchDone = False; attemptCount = 0
+        while not searchDone:
+            try:
+                simbadTable = Simbad.query_objects(self._objectNames)
+                searchDone = True
+            except Exception as e: # can raise Connection Error if you request too frequently
+                print(e)
+                if attemptCount > max_attempt: raise ValueError(f'Reached maximum ({max_attempt}) attempts, Abort!')
+                time.sleep(sleeptime)
+                attemptCount = attemptCount + 1
+        if simbadTable is not None:
+            simbadDf = simbadTable[['RA', 'DEC', 'SCRIPT_NUMBER_ID']].to_pandas()
+            ### remove sources corresponding to one single word/phrase
+            simbadDf = simbadDf.groupby('SCRIPT_NUMBER_ID').filter(lambda x: len(x) < removeThreshold)
+            ### get coordinate from strings...
+            titleCoords = (
+                simbadDf['RA'].apply(lambda x:x.replace(' ', ':')) + ' ' + 
+                simbadDf['DEC'].apply(lambda x:x.replace(' ', ':'))
+            ).to_list()
+            return titleCoords
+        return # return a Nonetype is nothing found in the title...
+
+
+    def simbadsearch(self, sleeptime = 3.0, max_attempt=5, withPrefix=False, removeThreshold=2):
+        '''
+        Perform Simbad Search within a Title. In order to avoid connection error, we will request `max_attempt` time with `sleeptime` seconds separation
+        Use `withPrefix` to find words only starts with prefix (from, in, star, ...). 
+        For a given word/phrase, there might be more than 1 simbad sources - remove those sources with count more than `removeThreshold`
+
+        Params:
+        ----------
+        sleeptime: float
+            rest time for the script between two attempts
+        max_attempt: int
+            maximum number of attempts for requesting
+        withPrefix: boolean, False by defaulr
+            if True, use Prefix indicator to select words/phrases
+        removethreshold: int
+            the number for removal if a word corresponding to more than `removeThreshold`(inclusive) sources
+
+        Returns:
+        ----------
+        titleCoords: list or Nonetype
+            each element is a coordinate parsed from the title. nothing for a Nonetype
+        '''
+        self._splittitle_(withPrefix=withPrefix)
+        return self._bulksearch_(sleeptime=sleeptime, max_attempt=max_attempt, removeThreshold=removeThreshold)
