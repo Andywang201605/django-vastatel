@@ -11,6 +11,9 @@ import astropy.units as u
 
 import time
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module='astroquery') # filter warning from astroquery
+
 
 class CoordMatch:
     '''
@@ -172,6 +175,7 @@ class TitleSearch:
     Search for coordinates in Simbad based on the telegram's title
     '''
     def __init__(self, title, phraseMaxWord=3, module='main'):
+        self.title = title
         self.maxword = phraseMaxWord
         self.logger = logging.getLogger(f'{module}.titlesearch')
 
@@ -199,30 +203,63 @@ class TitleSearch:
 
     def _bulksearch_(self, sleeptime=3.0, max_attempt=5, removeThreshold=2):
         '''perform a search on a list of Objects'''
+        raise ProcessLookupError('`_bulksearch_` can run into bugs, this method is no longer available. Use `_singlesearch_` instead')
+        # searchDone = False; attemptCount = 0
+        # while not searchDone:
+        #     try:
+        #         simbadTable = Simbad.query_objects(self._objectNames)
+        #         searchDone = True
+        #     except Exception as e: # can raise Connection Error if you request too frequently
+        #         print(e)
+        #         if attemptCount > max_attempt: raise ValueError(f'Reached maximum ({max_attempt}) attempts, Abort!')
+        #         time.sleep(sleeptime)
+        #         attemptCount = attemptCount + 1
+        # if simbadTable is not None:
+        #     simbadDf = simbadTable[['RA', 'DEC', 'SCRIPT_NUMBER_ID']].to_pandas()
+        #     ### remove sources corresponding to one single word/phrase
+        #     simbadDf = simbadDf.groupby('SCRIPT_NUMBER_ID').filter(lambda x: len(x) < removeThreshold)
+        #     ### get coordinate from strings...
+        #     titleCoords = (
+        #         simbadDf['RA'].apply(lambda x:x.replace(' ', ':')) + ' ' + 
+        #         simbadDf['DEC'].apply(lambda x:x.replace(' ', ':'))
+        #     ).to_list()
+        #     return titleCoords
+        # return # return a Nonetype is nothing found in the title...
+
+    def _singleSimbadSearch_(self, objectName, sleeptime=1.0, max_attempt=5, removeThreshold=2):
+        '''perform simbad search on a single word/phrase'''
         searchDone = False; attemptCount = 0
         while not searchDone:
             try:
-                simbadTable = Simbad.query_objects(self._objectNames)
+                simbadTable = Simbad.query_object(objectName)
                 searchDone = True
-            except Exception as e: # can raise Connection Error if you request too frequently
-                print(e)
+            except: # can raise Connection Error if you request too frequently
                 if attemptCount > max_attempt: raise ValueError(f'Reached maximum ({max_attempt}) attempts, Abort!')
                 time.sleep(sleeptime)
                 attemptCount = attemptCount + 1
-        if simbadTable is not None:
-            simbadDf = simbadTable[['RA', 'DEC', 'SCRIPT_NUMBER_ID']].to_pandas()
-            ### remove sources corresponding to one single word/phrase
-            simbadDf = simbadDf.groupby('SCRIPT_NUMBER_ID').filter(lambda x: len(x) < removeThreshold)
-            ### get coordinate from strings...
-            titleCoords = (
+        ### remove the request if the table is too long
+        if simbadTable is None: return 
+        if len(simbadTable) >= removeThreshold: 
+            self.logger.warning(f"{len(simbadTable)} sources found for {objectName}"); return
+        ### convert astropy.Table to a list of coordinate
+        simbadDf = simbadTable[['RA', 'DEC']].to_pandas()
+        objectCoords = (
                 simbadDf['RA'].apply(lambda x:x.replace(' ', ':')) + ' ' + 
                 simbadDf['DEC'].apply(lambda x:x.replace(' ', ':'))
-            ).to_list()
-            return titleCoords
-        return # return a Nonetype is nothing found in the title...
+        ).to_list()
+        return objectCoords
+
+    def _simbadSearch_(self, sleeptime=1.0, max_attempt=5, removeThreshold=2):
+        titleCoords = []
+        for objectName in self._objectNames:
+            objectCoords = self._singleSimbadSearch_(objectName, sleeptime, max_attempt, removeThreshold)
+            if objectCoords is not None: titleCoords.extend(objectCoords)
+        return titleCoords
+        
 
 
-    def simbadsearch(self, sleeptime = 3.0, max_attempt=5, withPrefix=False, removeThreshold=2):
+
+    def simbadsearch(self, sleeptime = 1.0, max_attempt=5, withPrefix=False, removeThreshold=2):
         '''
         Perform Simbad Search within a Title. In order to avoid connection error, we will request `max_attempt` time with `sleeptime` seconds separation
         Use `withPrefix` to find words only starts with prefix (from, in, star, ...). 
@@ -245,4 +282,5 @@ class TitleSearch:
             each element is a coordinate parsed from the title. nothing for a Nonetype
         '''
         self._splittitle_(withPrefix=withPrefix)
-        return self._bulksearch_(sleeptime=sleeptime, max_attempt=max_attempt, removeThreshold=removeThreshold)
+        return self._simbadSearch_(sleeptime=sleeptime, max_attempt=max_attempt, removeThreshold=removeThreshold)
+        # return self._bulksearch_(sleeptime=sleeptime, max_attempt=max_attempt, removeThreshold=removeThreshold)
