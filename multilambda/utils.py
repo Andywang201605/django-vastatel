@@ -56,8 +56,8 @@ def _parsecoord_(coordinput, galactic=False):
     ))'''
     decsex = r'''(?P<decSex>(
         (?P<decDeg>[\+|-]?\d+)(:\s*|\s|d\s*)
-        (?P<decMin>\d+)(:\s*|\s|m\s*)
-        (?P<decSec>\d+\.?\d*)(s?)
+        (?P<decMin>\d+)(:\s*|\s|m\s*|'\s*)
+        (?P<decSec>\d+\.?\d*)(s?|"\s*)
     ))'''
     restr = '^{},?\s+{}$'.format(rasex, decsex)
     repat = re.compile(restr, re.X | re.S)
