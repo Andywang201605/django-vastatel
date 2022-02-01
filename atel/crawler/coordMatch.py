@@ -1,9 +1,12 @@
 ### this is a separate script mainly focus on matching coordinates in html/txt
 import logging
+from multiprocessing.sharedctypes import Value
 import re
 from sys import excepthook
 from bs4 import BeautifulSoup
 import requests
+import pandas as pd
+import numpy as np
 
 from astroquery.simbad import Simbad
 from astropy.coordinates import SkyCoord
@@ -111,6 +114,17 @@ class CoordMatch:
             coordStrings.append(coordStr); coordRaws.append(matchDict['coordDeg'])
         return coordStrings, coordRaws
 
+    def matchAll(self):
+        coordStrings = []; coordRaws = []
+        ### sexegesimal
+        tmpcoord, tmpraw = self.matchSex()
+        coordStrings.extend(tmpcoord); coordRaws.extend(tmpraw)
+        ### decimal
+        tmpcoord, tmpraw = self.matchDeg()
+        coordStrings.extend(tmpcoord); coordRaws.extend(tmpraw)
+        return coordStrings, coordRaws
+
+
 
 class TNSQuery:
     '''
@@ -162,6 +176,7 @@ class TNSQuery:
                 tnsrespond = True   # get response successfully
             except ValueError:
                 self.logger.critical(f'The tns name {self.tnsname} is invalid or TNS server is not accessable for now...')
+                break
             except AssertionError:
                 if attempt > max_attempt: raise ValueError(f'Reached maximum ({max_attempt}) attempts, Abort!')
                 time.sleep(sleeptime) # sleep and attempt again
@@ -284,3 +299,103 @@ class TitleSearch:
         self._splittitle_(withPrefix=withPrefix)
         return self._simbadSearch_(sleeptime=sleeptime, max_attempt=max_attempt, removeThreshold=removeThreshold)
         # return self._bulksearch_(sleeptime=sleeptime, max_attempt=max_attempt, removeThreshold=removeThreshold)
+
+class CoordFilter:
+    '''
+    Remove coordinates that are too close to each other
+    '''
+    def __init__(
+        self,
+        coords,
+        module = 'main'
+        ):
+        self.tmpcoords = coords
+        self.logger = logging.getLogger(f'{module}.coordfilter')
+        self._concat_()
+        self._constructGroup_()
+
+    def _concat_(self):
+        '''concatanate a list of coordinates object'''
+        if isinstance(self.tmpcoords, SkyCoord): 
+            self.coords = self.tmpcoords; return
+        if isinstance(self.tmpcoords, list):
+            ras = []; decs = []
+            for itercoords in self.tmpcoords:
+                ras.extend(itercoords.ra.value)
+                decs.extend(itercoords.dec.value)
+            self.coords = SkyCoord(ras, decs, unit=u.degree)
+            return
+
+    def _constructGroup_(self):
+        '''construct a dataframe for all coordinates'''
+        self.groupArray = np.ones(len(self.coords), dtype=int) * -1
+
+    def _groupby_(self, radius=5.):
+        '''group by sources in `self.coords`'''
+        preGroup = -1
+        for i in range(len(self.coords)):
+            coord = self.coords[i]
+            newGroup = self._findGroup_(coord, radius=radius, preGroup=preGroup)
+            self.groupArray[i] = newGroup
+            if newGroup > preGroup: preGroup = newGroup
+        self.maxGroup = preGroup
+        ### check if all sources have been classified as a group
+        if (self.groupArray < 0).sum() > 0: 
+            self.logger.critical('Some sources are not grouped by... please check')
+            raise ValueError(f'Some sources are not grouped by... - {self.coords}')
+
+    def _findGroup_(self, coord, radius=5., preGroup=-1):
+        '''
+        for a given coordinate find the group
+
+        Params:
+        ----------
+        coord: astropy.coordinates.SkyCoord
+            coordinate to find group for
+        radius: float
+            crossmatch radius in the unit of arcsec
+        preGroup: int
+            group assigned for the previous source
+        '''
+        matchidx, matchd2d, _ = coord.match_to_catalog_sky(self.coords, nthneighbor=2) # avoid match to itself
+        if matchd2d.value[0] > radius / 3600.: return preGroup + 1
+        ### for a match
+        matchGroup = self.groupArray[matchidx]
+        if matchGroup < 0: return preGroup + 1 # the matched source is not grouped by already...
+        return matchGroup
+
+    def _findUnique_(self, method=None):
+        '''
+        based on the `self.groupArray`, work out the coordinates for the unique sources
+
+        Params:
+        -----------
+        method: None or python function
+            select which function to use to select representing coordinate for a group. None for pick up the first one
+        '''
+        if method is not None:
+            raise NotImplementedError('other method for aggregation is not supported...')
+        
+        uniqueSources = []
+        for group in range(self.maxGroup + 1):
+            groupCoords = self.coords[self.groupArray == group]
+            uniqueSources.append((groupCoords[0].ra.value, groupCoords[0].dec.value))
+        self.uniqueSources = uniqueSources
+
+    def filterSources(self, radius=5., method=None):
+        '''
+        function for selecting unique sources in `coords` given a `radius` in arcsec. 
+        The `method` is used for aggregation, `None` for picking up the first one
+
+        Params:
+        ----------
+        radius: float
+            crossmatch radius in the unit of arcsec
+        method: None or python function
+            select which function to use to select representing coordinate for a group. None for pick up the first one
+        '''
+        self._groupby_(radius = radius)
+        self._findUnique_(method = method)
+        
+
+

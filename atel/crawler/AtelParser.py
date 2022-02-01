@@ -10,6 +10,7 @@ import requests
 import re
 
 ### astropy packages
+from astropy import coordinates
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 
@@ -133,7 +134,48 @@ class AtelPage:
 
         self.tnsObjs = tnsObjs
 
+    def _colorMatch_(self, coordRaws, color='powderblue'):
+        ''' replace the matching strings to a different format '''
+        for coordRaw in coordRaws:
+            formatRaw = r'''<font style="background-color:{};"> {} </font>'''.format(color, coordRaw)
+            self.coloredTelegram = self.telegram.replace(coordRaw, formatRaw)
+
+    def findCoord(self):
+        '''
+        search for coordinates in the atel
+        ''' 
+        coords = []
+        ### search for coordinates
+        coordmatcher = coordMatch.CoordMatch(self.telegram, module='atelparser')
+        textCoords, coordRaws = coordmatcher.matchAll()
+        self._colorMatch_(coordRaws, color='powderblue') # replace the matched string with formatting
+        if len(textCoords) > 0: coords.append(SkyCoord(textCoords))
+        self.logger.info(f'{len(textCoords)} sources found in the main text...')
+
+        ### search for TNS coordinates
+        self._findTNS_(); tnsCoords = []
+        for tnsName in self.tnsObjs:
+            tnsquery = coordMatch.TNSQuery(tnsName, module='atelparser')
+            try: tnsCoords.append(tnsquery.checkcoord())
+            except: self.logger.warning(f'{tnsName} is not existed in the transient name server...')
+        if len(tnsCoords) > 0: coords.append(SkyCoord(tnsCoords, unit=(u.hourangle, u.degree)))
+        self.logger.info(f'{len(tnsCoords)} sources found in the TNS server...')
+        
+        ### search for sources in coordinate
+        titlesearcher = coordMatch.TitleSearch(self.ateltitle, module='atelparser')
+        titleCoords = titlesearcher.simbadsearch()
+        if len(titleCoords) > 0: coords.append(SkyCoord(titleCoords, unit=(u.hourangle, u.degree)))
+        self.logger.info(f'{len(titleCoords)} sources found in the title...')
+        
+        ### convert these strings to astropy.coordinates.SkyCoord objects
+        if len(coords) == 0: self.coords = []; return
+        ### use coordfilter to clean the coordinate
+        coordfilter = coordMatch.CoordFilter(coords, module='atelparser')
+        coordfilter.filterSources(radius = 5., method=None)
+        self.coords = coordfilter.uniqueSources; return coordfilter
 
     
+
+
 
 
