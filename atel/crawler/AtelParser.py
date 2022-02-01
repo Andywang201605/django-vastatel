@@ -14,10 +14,12 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 
 ### package development
+import re
 import os
 import pkg_resources
 import logging
 import crawlerUtils
+import coordMatch
 
 class AtelHome:
     '''
@@ -100,7 +102,7 @@ class AtelPage:
         self.logger.info('extracting atel main telegram from the html...')
         telegrams = self.htmlsoup.findAll('div', attrs={'id': 'telegram'})
         assert len(telegrams) == 1, 'Error, {} telegram(s) found in this telegram...'.format(len(telegrams))
-        self.telegram = telegrams[0]
+        self.telegram = telegrams[0].__str__() # convert from `Tag` to `string`
 
     def _extractAtelID_(self):
         '''extract atel id for this page'''
@@ -118,6 +120,19 @@ class AtelPage:
         self.atelid = atelids[0]
         ### save atel title to an attribute
         self.ateltitle = ':'.join(titleString.split(':')[1:]).strip() # to avoid titles like xxx: xxxxxx
+
+    def _findTNS_(self):
+        '''find TNS source within the telegram'''
+        reTNSurl = r'\"https://wis-tns.weizmann.ac.il/object/(?P<tnsObj>[0-9a-zA-Z]{5,9})\"'
+        reTNSEx = re.compile(reTNSurl, re.S | re.X)
+        
+        tnsObjs = []
+        for reMatch in re.finditer(reTNSEx, self.telegram):
+            tnsObj = reMatch.groupdict()['tnsObj']
+            if tnsObj not in tnsObjs: tnsObjs.append(tnsObj)
+
+        self.tnsObjs = tnsObjs
+
 
     
 
