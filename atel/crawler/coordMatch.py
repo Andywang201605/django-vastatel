@@ -334,8 +334,7 @@ class CoordFilter:
         '''group by sources in `self.coords`'''
         preGroup = -1
         for i in range(len(self.coords)):
-            coord = self.coords[i]
-            newGroup = self._findGroup_(coord, radius=radius, preGroup=preGroup)
+            newGroup = self._findGroup_(i, radius=radius, preGroup=preGroup)
             self.groupArray[i] = newGroup
             if newGroup > preGroup: preGroup = newGroup
         self.maxGroup = preGroup
@@ -344,20 +343,23 @@ class CoordFilter:
             self.logger.critical('Some sources are not grouped by... please check')
             raise ValueError(f'Some sources are not grouped by... - {self.coords}')
 
-    def _findGroup_(self, coord, radius=5., preGroup=-1):
+    def _findGroup_(self, coordidx, radius=5., preGroup=-1):
         '''
         for a given coordinate find the group
 
         Params:
         ----------
-        coord: astropy.coordinates.SkyCoord
-            coordinate to find group for
+        coordidx: int
+            index for a coordinate
         radius: float
             crossmatch radius in the unit of arcsec
         preGroup: int
             group assigned for the previous source
         '''
-        matchidx, matchd2d, _ = coord.match_to_catalog_sky(self.coords, nthneighbor=2) # avoid match to itself
+        ### for the first one, return 0
+        if coordidx == 0: return 0
+        coord = self.coords[coordidx]
+        matchidx, matchd2d, _ = coord.match_to_catalog_sky(self.coords[:coordidx], nthneighbor=1)
         if matchd2d.value[0] > radius / 3600.: return preGroup + 1
         ### for a match
         matchGroup = self.groupArray[matchidx]
