@@ -213,7 +213,7 @@ class TitleSearch:
                     words = titlesplit[i+1:i+j+2]
                     objectNames.append(' '.join(words))
         self.logger.debug('object for searching - {}'.format(objectNames))
-        self._objectNames = objectNames
+        self._objectNames = list(set(objectNames)) # remove duplicated
         return objectNames
 
     def _bulksearch_(self, sleeptime=3.0, max_attempt=5, removeThreshold=2):
@@ -246,6 +246,7 @@ class TitleSearch:
         searchDone = False; attemptCount = 0
         while not searchDone:
             try:
+                Simbad.TIMEOUT = 10
                 simbadTable = Simbad.query_object(objectName)
                 searchDone = True
             except: # can raise Connection Error if you request too frequently

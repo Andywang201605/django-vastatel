@@ -5,6 +5,7 @@
 
 ### html parsing
 from bs4 import BeautifulSoup
+from lark import logger
 from numpy import rec
 import requests
 import re
@@ -71,6 +72,7 @@ class AtelPage:
         pagepath,
         pageurl = False,
         datapath = None,
+        searchMethod = 'main,tns,title',
         ):
         '''
         Initiate function for `AtelPage` class
@@ -83,6 +85,8 @@ class AtelPage:
             whether `pagepath` is a url or not
         datapath: string or Nonetype
             if not Nonetype, save all relavent data in that place
+        searchMethod: string
+            coordinates matching methods in `findCoord`.
         '''
         self.logger = logging.getLogger('atelparser.atelpage') # set logging
         ### check and make directory ###
@@ -97,6 +101,7 @@ class AtelPage:
             self.html = fp.read()
         self.logger.info(f'loading atel telegram from {pagepath}')
         self.htmlsoup = BeautifulSoup(self.html, 'html.parser')
+        self.searchMethod = searchMethod
 
     def _extractMain_(self):
         '''extract main text from html'''
@@ -122,6 +127,14 @@ class AtelPage:
         ### save atel title to an attribute
         self.ateltitle = ':'.join(titleString.split(':')[1:]).strip() # to avoid titles like xxx: xxxxxx
 
+    def _extractSubjects_(self):
+        '''extract subject from the atel'''
+        reSubjects = re.compile('<p class="subjects">Subjects:(.*?)<\/p>', re.I)
+        subjectStr = reSubjects.findall(self.telegram)
+        assert len(subjectStr) > 0, 'No atel subjects found in the html...'
+        subjectRaw = subjectStr[0].strip().lower().split(',')
+        self.subjects = [subject.strip() for subject in subjectRaw]
+
     def _findTNS_(self):
         '''find TNS source within the telegram'''
         reTNSurl = r'\"https://wis-tns.weizmann.ac.il/object/(?P<tnsObj>[0-9a-zA-Z]{5,9})\"'
@@ -136,6 +149,7 @@ class AtelPage:
 
     def _colorMatch_(self, coordRaws, color='powderblue'):
         ''' replace the matching strings to a different format '''
+        self.coloredTelegram = self.telegram
         for coordRaw in coordRaws:
             formatRaw = r'''<font style="background-color:{};"> {} </font>'''.format(color, coordRaw)
             self.coloredTelegram = self.telegram.replace(coordRaw, formatRaw)
@@ -146,33 +160,39 @@ class AtelPage:
         ''' 
         coords = []
         ### search for coordinates
-        coordmatcher = coordMatch.CoordMatch(self.telegram, module='atelparser')
-        textCoords, coordRaws = coordmatcher.matchAll()
-        self._colorMatch_(coordRaws, color='powderblue') # replace the matched string with formatting
-        if len(textCoords) > 0: coords.append(SkyCoord(textCoords))
-        self.logger.info(f'{len(textCoords)} sources found in the main text...')
+        if 'main' in self.searchMethod:
+            coordmatcher = coordMatch.CoordMatch(self.telegram, module='atelparser')
+            textCoords, coordRaws = coordmatcher.matchAll()
+            self._colorMatch_(coordRaws, color='powderblue') # replace the matched string with formatting
+            if len(textCoords) > 0: coords.append(SkyCoord(textCoords))
+            self.logger.info(f'{len(textCoords)} sources found in the main text...')
 
         ### search for TNS coordinates
-        self._findTNS_(); tnsCoords = []
-        for tnsName in self.tnsObjs:
-            tnsquery = coordMatch.TNSQuery(tnsName, module='atelparser')
-            try: tnsCoords.append(tnsquery.checkcoord())
-            except: self.logger.warning(f'{tnsName} is not existed in the transient name server...')
-        if len(tnsCoords) > 0: coords.append(SkyCoord(tnsCoords, unit=(u.hourangle, u.degree)))
-        self.logger.info(f'{len(tnsCoords)} sources found in the TNS server...')
+        if 'tns' in self.searchMethod:
+            self._findTNS_(); tnsCoords = []
+            for tnsName in self.tnsObjs:
+                tnsquery = coordMatch.TNSQuery(tnsName, module='atelparser')
+                try: tnsCoords.append(tnsquery.checkcoord())
+                except: self.logger.warning(f'{tnsName} is not existed in the transient name server...')
+            if len(tnsCoords) > 0: coords.append(SkyCoord(tnsCoords, unit=(u.hourangle, u.degree)))
+            self.logger.info(f'{len(tnsCoords)} sources found in the TNS server...')
         
         ### search for sources in coordinate
-        titlesearcher = coordMatch.TitleSearch(self.ateltitle, module='atelparser')
-        titleCoords = titlesearcher.simbadsearch()
-        if len(titleCoords) > 0: coords.append(SkyCoord(titleCoords, unit=(u.hourangle, u.degree)))
-        self.logger.info(f'{len(titleCoords)} sources found in the title...')
+        if 'title' in self.searchMethod:
+            titlesearcher = coordMatch.TitleSearch(self.ateltitle, module='atelparser')
+            try: titleCoords = titlesearcher.simbadsearch()
+            except: self.logger.warning('Simbad Title search failed... Likely Connection Error...'); titleCoords = []
+            if len(titleCoords) > 0: coords.append(SkyCoord(titleCoords, unit=(u.hourangle, u.degree)))
+            self.logger.info(f'{len(titleCoords)} sources found in the title...')
         
         ### convert these strings to astropy.coordinates.SkyCoord objects
         if len(coords) == 0: self.coords = []; return
         ### use coordfilter to clean the coordinate
         coordfilter = coordMatch.CoordFilter(coords, module='atelparser')
         coordfilter.filterSources(radius = 5., method=None)
-        self.coords = coordfilter.uniqueSources; return coordfilter
+        self.coords = coordfilter.uniqueSources; return 
+
+
 
     
 

@@ -2,7 +2,7 @@
 from django.http import request
 from django.utils import timezone
 
-from .VASTTransients.source import VASTSource
+from VASTTransients.source import VASTSource
 from .models import SourceWeb
 
 ### package development
