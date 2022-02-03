@@ -1,0 +1,8 @@
+{
+    "Radio": 600,
+    "Optical": 30,
+    "IR_WISE": 30,
+    "IR_2MASS": 30,
+    "UV": 60,
+    "High Energy": 1800
+}

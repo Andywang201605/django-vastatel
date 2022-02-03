@@ -13,6 +13,7 @@ from .config import *
 # normal packages
 from datetime import datetime
 import numpy as np
+import pandas as pd
 import threading
 import json
 import re
@@ -238,13 +239,15 @@ def _sourceanalysis_(coord, taskname, download_list):
         download_list,
     )
     vastsource.sourceAnalysis()
+    ## find closest VAST source ##
+    _findVASTrun_(taskname, radius=60.)
     ## TODO: add export PDF function ## - done!
     html = HTML(f"http://0.0.0.0:8021/multilambda/{taskname}/webpage/")
     html.write_pdf(
         f'{LAMBDADIR}/{taskname}/multiweb_{taskname}.pdf',
         stylesheets=[
             CSS(string='''@page {
-                size: A4; 
+                size: A4 landscape; 
                 margin: 0mm; 
                 }''')
         ],
@@ -333,3 +336,56 @@ def _checkmeasure_(taskname):
     if os.path.exists(f'{taskdir}/source_measurement.pickle'):
         return True
     return False
+
+##### filter VAST run and find associated sources #####
+##-- box search -- ##
+# use skycoord will be extremely slow when using astropy.coordinates.SkyCoord.separation
+def _calRAangle_(ra1, ra2):
+    '''
+    calculate the RA angle between two points on the sky with RA = ra1 and ra2 respectively
+    '''
+    rasep = abs(ra1 - ra2) % 360.
+    return 360. - rasep if rasep > 180. else rasep
+    
+def _boxSearch_(ra, dec, srcdf, radius=60., racol='wavg_ra', deccol='wavg_dec'):
+    radius = radius / 3600. # convert to degree
+    ### filter dec
+    declo = max(-90, dec - radius); dechi = min(90, dec + radius)
+    findf = srcdf[(srcdf[deccol] >= declo) & (srcdf[deccol] <= dechi)].copy(deep=True)
+    ### filter ra
+    rasep = findf[racol].apply(lambda radf:_calRAangle_(ra, radf))
+    findf = findf[rasep < min(radius/np.cos(np.deg2rad(dec)), 360)].copy(deep=True)
+    return findf
+###### --------- ######
+def _pipelink_(srcid):
+    return f'<a target="_blank" href="https://dev.pipeline.vast-survey.org/sources/{srcid}/">{srcid}</a>'
+
+def _findVASTrun_(taskname, radius=60., overwrite=False):
+    ### check if json file already there
+    if os.path.exists(f'{LAMBDADIR}/{taskname}/VASTrun.source.json') and not overwrite: return
+    srcdf = pd.read_pickle(VASTRUNPICKLE)
+    ### load coord from taskname
+    requestinfo = _loadrequestjson_(taskname, filenameconvert=True)
+    coord = requestinfo['coord']
+    ### start filtering ###
+    findf = _boxSearch_(coord[0], coord[1], srcdf, radius = radius)
+    findf['separation'] = SkyCoord(*coord, unit=u.degree).separation(
+        SkyCoord(findf['wavg_ra'], findf['wavg_dec'], unit=u.degree)
+        ).value*3600. # add separation column, in unit of arcseconds
+    findf = findf.sort_values('separation')
+    ### if findf is too long - select the first 10 ###
+    if len(findf) > 10: findf = findf.iloc[:10]
+    findf.insert(
+        0, 'pipelink', 
+        pd.Series(findf.index, name='pipelink').apply(_pipelink_).to_numpy()
+    )
+    ### dump information to json file ###
+    findf.to_json(f'{LAMBDADIR}/{taskname}/VASTrun.source.json')
+
+########################
+def _loadVASTtab_(taskname):
+    '''load vast source table'''
+    if not os.path.exists(f'{LAMBDADIR}/{taskname}/VASTrun.source.json'): 
+        return '<b><font color="red"> loading... please wait... </font></b>'
+    findf = pd.read_json(f'{LAMBDADIR}/{taskname}/VASTrun.source.json')
+    return findf.to_html(index_names=False,escape=False,index=False,classes='piperun')

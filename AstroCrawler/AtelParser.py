@@ -20,8 +20,9 @@ import re
 import os
 import pkg_resources
 import logging
-import crawlerUtils
-import coordMatch
+import json
+
+from . import crawlerUtils, coordMatch, AtelDatabase
 
 class AtelHome:
     '''
@@ -89,12 +90,6 @@ class AtelPage:
             coordinates matching methods in `findCoord`.
         '''
         self.logger = logging.getLogger('atelparser.atelpage') # set logging
-        ### check and make directory ###
-        if datapath is None:
-            self.logger.critical('`datapath` cannot be Nonetype...')
-            raise ValueError('None for datapath')
-        else:
-            crawlerUtils.makedirs(datapath)
         ######
         if pageurl: raise NotImplementedError('`pageurl = True` for Atelpage is under development...')
         with open(pagepath, encoding='utf-8') as fp:
@@ -102,6 +97,19 @@ class AtelPage:
         self.logger.info(f'loading atel telegram from {pagepath}')
         self.htmlsoup = BeautifulSoup(self.html, 'html.parser')
         self.searchMethod = searchMethod
+        ### extract critical information ###
+        self._extractMain_()
+        self._extractAtelID_()
+        self._extractSubjects_()
+        ### check and make directory ###
+        ### make datapath to the path for one atel only ###
+        if datapath is None:
+            self.logger.warning('`datapath` is Nonetype, will ignore writing process...')
+            self.datapath = None
+        else:
+            datapath = f'{datapath}/ATEL{self.atelid}/'
+            crawlerUtils.makedirs(datapath)
+            self.datapath = datapath
 
     def _extractMain_(self):
         '''extract main text from html'''
@@ -192,6 +200,31 @@ class AtelPage:
         coordfilter.filterSources(radius = 5., method=None)
         self.coords = coordfilter.uniqueSources; return 
 
+    def dumpinfo(self):
+        '''dump parsed information to local file'''
+        if self.datapath is None: 
+            self.logger.warning('`datapath` is Nonetype... `dumpinfo` will be ignored...')
+            return
+        ### save formatted html to the datapath directory ###
+        with open(f'{self.datapath}/coloredATel.html', 'w', encoding='utf-8') as fp:
+            fp.write(self.coloredTelegram)
+        self.logger.info('saving formatted html ATel to datapath...')
+        ### dump important information as a json file ###
+        ateljson = {
+            'id': int(self.atelid),
+            'title': self.ateltitle,
+            'subject': self.subjects,
+            'source': self.coords,
+        }
+        with open(f'{self.datapath}/atelinfo.json', 'w') as fp:
+            json.dump(ateljson, fp)
+        self.logger.info('writing Atel information to json file...')
+
+    def updateDatabase(self):
+        self.logger.info(f'updating django database for atel#{self.atelid}...')
+        AtelDatabase.updataDatabase(self)
+
+    
 
 
     
