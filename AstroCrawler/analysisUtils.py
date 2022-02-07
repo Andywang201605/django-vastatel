@@ -100,7 +100,7 @@ def _boxSearch_(ra, dec, srcdf, radius=60., racol='wavg_ra', deccol='wavg_dec'):
     return findf
 ###### --------- ######
 def _pipelink_(srcid):
-    return f'<a href="https://dev.pipeline.vast-survey.org/sources/{srcid}/">{srcid}</a>'
+    return f'<a target="_blank" href="https://dev.pipeline.vast-survey.org/sources/{srcid}/">{srcid}</a>'
 
 def _findVASTrun_(taskname, radius=60., overwrite = False):
     if os.path.exists(f'{LAMBDADIR}/{taskname}/VASTrun.source.json') and not overwrite: return
@@ -110,13 +110,14 @@ def _findVASTrun_(taskname, radius=60., overwrite = False):
     coord = requestinfo['coord']
     ### start filtering ###
     findf = _boxSearch_(coord[0], coord[1], srcdf, radius = radius)
-    findf['separation'] = SkyCoord(*coord, unit=u.degree).separation(
+    separation = SkyCoord(*coord, unit=u.degree).separation(
         SkyCoord(findf['wavg_ra'], findf['wavg_dec'], unit=u.degree)
         ).value*3600. # add separation column, in unit of arcseconds
-    findf = findf.sort_values('sep')
+    findf.insert(0, "separation", separation)
+    findf = findf.sort_values('separation')
     ### if findf is too long - select the first 10 ###
     if len(findf) > 10: findf = findf.iloc[:10]
-    findf['pipelink'] = pd.Series(findf.index).apply(_pipelink_).to_numpy()
+    findf.insert(0, "pipelink", pd.Series(findf.index).apply(_pipelink_).to_numpy())
     ### dump information to json file ###
     findf.to_json(f'{LAMBDADIR}/{taskname}/VASTrun.source.json')
 
