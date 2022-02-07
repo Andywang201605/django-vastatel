@@ -263,14 +263,15 @@ class TitleSearch:
                 simbadDf['RA'].apply(lambda x:x.replace(' ', ':')) + ' ' + 
                 simbadDf['DEC'].apply(lambda x:x.replace(' ', ':'))
         ).to_list()
+        self.logger.info(f'Object {objectName} - found in Simbad...')
         return objectCoords
 
     def _simbadSearch_(self, sleeptime=1.0, max_attempt=5, removeThreshold=2):
-        titleCoords = []
+        titleCoords = []; titleNames = []
         for objectName in self._objectNames:
             objectCoords = self._singleSimbadSearch_(objectName, sleeptime, max_attempt, removeThreshold)
-            if objectCoords is not None: titleCoords.extend(objectCoords)
-        return titleCoords
+            if objectCoords is not None: titleCoords.extend(objectCoords); titleNames.append(objectName)
+        return titleCoords, titleNames
         
 
 
