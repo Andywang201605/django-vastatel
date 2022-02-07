@@ -5,13 +5,10 @@
 
 ### html parsing
 from bs4 import BeautifulSoup
-from lark import logger
-from numpy import rec
 import requests
 import re
 
 ### astropy packages
-from astropy import coordinates
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 
@@ -21,6 +18,8 @@ import os
 import pkg_resources
 import logging
 import json
+
+from weasyprint import HTML, CSS
 
 from . import crawlerUtils, coordMatch, AtelDatabase
 
@@ -107,7 +106,7 @@ class AtelPage:
             self.logger.warning('`datapath` is Nonetype, will ignore writing process...')
             self.datapath = None
         else:
-            datapath = f'{datapath}/ATEL{self.atelid}/'
+            # datapath = f'{datapath}/ATEL{self.atelid}/'
             crawlerUtils.makedirs(datapath)
             self.datapath = datapath
 
@@ -160,7 +159,14 @@ class AtelPage:
         self.coloredTelegram = self.telegram
         for coordRaw in coordRaws:
             formatRaw = r'''<font style="background-color:{};"> {} </font>'''.format(color, coordRaw)
-            self.coloredTelegram = self.telegram.replace(coordRaw, formatRaw)
+            self.coloredTelegram = self.coloredTelegram.replace(coordRaw, formatRaw)
+
+    def _colorTitle_(self, titleMatches, color='SpringGreen'):
+        try: self.coloredTelegram
+        except: self.coloredTelegram = self.telegram
+        for titleMatch in titleMatches:
+            formatTitle = r'''<font style="background-color:{};"> {} </font>'''.format(color, titleMatch)
+            self.coloredTelegram = self.coloredTelegram.replace(titleMatch, formatTitle)
 
     def findCoord(self):
         '''
@@ -188,9 +194,10 @@ class AtelPage:
         ### search for sources in coordinate
         if 'title' in self.searchMethod:
             titlesearcher = coordMatch.TitleSearch(self.ateltitle, module='atelparser')
-            try: titleCoords = titlesearcher.simbadsearch()
-            except: self.logger.warning('Simbad Title search failed... Likely Connection Error...'); titleCoords = []
+            try: titleCoords, titleNames = titlesearcher.simbadsearch()
+            except: self.logger.warning('Simbad Title search failed... Likely Connection Error...'); titleCoords = []; titleNames = []
             if len(titleCoords) > 0: coords.append(SkyCoord(titleCoords, unit=(u.hourangle, u.degree)))
+            self._colorTitle_(titleNames)
             self.logger.info(f'{len(titleCoords)} sources found in the title...')
         
         ### convert these strings to astropy.coordinates.SkyCoord objects
@@ -200,6 +207,20 @@ class AtelPage:
         coordfilter.filterSources(radius = 5., method=None)
         self.coords = coordfilter.uniqueSources; return 
 
+    def _exportHTML_(self):
+        '''convert coloured html to png file'''
+        html = HTML(f'{self.datapath}/coloredATel.html')
+        html.write_png(
+            f'{self.datapath}/coloredATel.png', 
+            presentational_hints=True,
+            stylesheets=[CSS(string='''@page {
+                size: A4; 
+                margin: 0mm; 
+                background-color: white;
+            }''')],
+        )
+
+
     def dumpinfo(self):
         '''dump parsed information to local file'''
         if self.datapath is None: 
@@ -208,6 +229,7 @@ class AtelPage:
         ### save formatted html to the datapath directory ###
         with open(f'{self.datapath}/coloredATel.html', 'w', encoding='utf-8') as fp:
             fp.write(self.coloredTelegram)
+        self._exportHTML_()
         self.logger.info('saving formatted html ATel to datapath...')
         ### dump important information as a json file ###
         ateljson = {
