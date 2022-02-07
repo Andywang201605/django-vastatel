@@ -210,7 +210,7 @@ class TitleSearch:
         else: # search all title...
             for i, word in enumerate(titlesplit):
                 for j in range(self.maxword):
-                    words = titlesplit[i+1:i+j+2]
+                    words = titlesplit[i:i+j+1]
                     objectNames.append(' '.join(words))
         self.logger.debug('object for searching - {}'.format(objectNames))
         self._objectNames = list(set(objectNames)) # remove duplicated
