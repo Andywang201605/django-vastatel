@@ -12,3 +12,17 @@ img.multicutout {
     margin: auto;
     display: block;
 }
+
+table.piperun {
+    border-collapse: collapse;
+    text-align: right;
+    width: 100%;
+}
+
+th {
+    background-color: lightskyblue;
+}
+
+td {
+    background-color: lightyellow;
+}

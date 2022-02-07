@@ -121,7 +121,7 @@ def download_archival(ra,dec,radius,survey,savedir, cache=True):
     fitspath = os.path.join(savedir, fits_fname)
 
     if os.path.exists(fitspath):
-        print(fitspath, 'already exists!')
+        # print(fitspath, 'already exists!')
         return 0
 
 

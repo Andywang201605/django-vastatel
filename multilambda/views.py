@@ -42,6 +42,7 @@ def webpage(request, taskname):
     ra, dec = requestjson['coord']
     overlaypath = utils._getmulticutoutpath_(taskname)
     isvast = utils._checkmeasure_(taskname)
+    vasttab = utils._loadVASTtab_(taskname)
     return render(
         request, 'multilambda/webpage.html', 
         {
@@ -49,5 +50,6 @@ def webpage(request, taskname):
             'ra':ra, 'dec':dec,
             'overlaypath': overlaypath,
             'isvast': isvast,
+            'vasttab': vasttab
         }
     )

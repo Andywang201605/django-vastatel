@@ -1,0 +1,35 @@
+{
+    "Radio": [
+        "GLEAM 170-231 MHz",
+        "TGSS ADR1",
+        "SUMSS 843 MHz",
+        "NVSS"        
+    ],
+    "Optical": [
+        "PanSTARRS",
+        "SkyMapper",
+        "DSS"
+    ],
+    "IR_WISE": [
+        "WISE 3.4",
+        "WISE 4.6",
+        "WISE 12",
+        "WISE 22"
+    ],
+    "IR_2MASS": [
+        "2MASS-J",
+        "2MASS-H",
+        "2MASS-K"
+    ],
+    "UV": [
+        "UVOT UVW1 Intensity",
+        "GALEX Near UV",
+        "GALEX Far UV"
+    ],
+    "High Energy": [
+        "RASS-Cnt Broad",
+        "BAT SNR 14-195",
+        "RXTE Allsky 3-20keV Flux",
+        "Fermi 1"
+    ]
+}
