@@ -5,7 +5,7 @@
 from django.conf import settings
 import django
 
-from webinterface.settings import DATABASES, INSTALLED_APPS
+from .config import *
 try:
     settings.configure(DATABASES=DATABASES, INSTALLED_APPS=INSTALLED_APPS)
     django.setup()
@@ -18,6 +18,7 @@ from multilambda.models import SourceWeb
 
 from datetime import datetime
 import logging
+import time
 import numpy as np
 
 from astropy.coordinates import SkyCoord
@@ -53,6 +54,9 @@ def updataDatabase(atelpage):
     ### update source
     for srccoord in atelpage.coords:
         srcModel = _findSrc_(srccoord)
+        ### sleep for 1.6 seconds to avoid same name###
+        time.sleep(1.6)
+        ###############################################
         mainModel.atelSrc.add(srcModel)
 
 def _findMain_(newID, clear=True):
@@ -176,6 +180,8 @@ class AtelDataBase:
         self.atelid = int(atelid)
         self.logger = logging.getLogger('atelparser.ateldb')
         self._getMain_()
+        self._getSub_()
+        self._getSrc_()
 
     def _getMain_(self):
         '''
@@ -202,5 +208,10 @@ class AtelDataBase:
         for srcModel in self.mainModel.atelSrc.all():
             coord = (srcModel.srcra, srcModel.srcdec)
             srcname = _sourcename_(coord)
-            self.srctask.append((srcname, srcModel.taskname))
+            self.srctask.append((srcname, coord, srcModel.taskname))
 
+### get latest atel ###
+def _getLastest_():
+    '''Get latest Atel ID in our database'''
+    newestATel = AtelMain.objects.latest('atelID')
+    return newestATel.atelID
