@@ -42,7 +42,7 @@ class CoordMatch:
         ### format for R.A.
         #           #   RA or R.A.  #          #         (J2000.0)       #          #      date       #
         self.startRA = r'''(((R\.?\s*A\.?\s*|Coord\s*)(\(?\s*J2000(\.0)?\s*\)?\s*)?(=|:|\s)|(\d{4}-\d{2}-\d{2}))\s*)?'''
-        self.endRA = r'''\s*(deg)?(d)?(and)?(,)?(;)?(o)?\s+'''
+        self.endRA = r'''\s*(deg)?(d)?(and)?(,)?(;)?(o)?(\|)?\s+'''
         # end with deg, d and and
         ### format for Decl.
         self.startDec = r'''\s*(Decl?\.?\s*(=|:)?)?\s*'''
