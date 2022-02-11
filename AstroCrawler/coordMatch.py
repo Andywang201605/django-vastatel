@@ -198,7 +198,8 @@ class TitleSearch:
     def _splittitle_(self, withPrefix=True):
         objectNames = []
         ### replace special characters in the title
-        self.title = self.title.replace(':',' ')
+        toreplace = [':', '/']
+        for char in toreplace: self.title = self.title.replace(char, ' ')
         titlesplit = self.title.split()
         if withPrefix:
             prefix_words = ['of', 'from', 'in', 'blazar', 'star', 'nova', ]
