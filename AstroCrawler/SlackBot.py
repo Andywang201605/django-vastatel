@@ -103,7 +103,7 @@ class ATelVASTBot(SlackBot):
             atelinfo = json.load(fp)
         return atelinfo
         
-    def _postNewAtel_(self, atelid, manual=False):
+    def _postNewAtel_(self, atelid, manual=False, dryrun=False):
         '''Post Atel in the main conversation'''
         atelinfo = self._loadAtel_(atelid)
         ### start a message ###
@@ -113,6 +113,9 @@ class ATelVASTBot(SlackBot):
         # message content #
         if manual: line1 = f'''*[Update ATel {atelid}]* - {numSrc} sources parsed'''
         else: line1 = f'''*[ATel {atelid}]* - {numSrc} sources parsed'''
+        if dryrun: 
+            print(f'''{line1}\n*Title:* {atelinfo['title']}\n*Subject:* {messageSubject}\n*Check original telegram* <{atelLink}|here>!''')
+            return
         atelmessage = f'''{line1}\n*Title:* {atelinfo['title']}\n*Subject:* {messageSubject}\n*Check original telegram* <{atelLink}|here>!'''
         response = self.postMessage(atelmessage, unfurl_links=False); return response
 
@@ -133,14 +136,18 @@ class ATelVASTBot(SlackBot):
         return '*VAST/RACS footprint*: VAST/RACS'
         
 
-    def _replySource_(self, response, atelid, replyFormatHTML = True):
+    def _replySource_(self, response, atelid, replyFormatHTML = True, dryrun=False):
         ateldbRecord = AtelDatabase.AtelDataBase(atelid)
+        if response is None: dryrun = True # if there is no response - run a dry run
         if 'comet' in ateldbRecord.subject:
-            self.replyMessage(
-                'This source is probably a comet :comet:',
-                response['message'],
-            )
+            if dryrun: print('This source is probably a comet :comet:')
+            else:
+                self.replyMessage(
+                    'This source is probably a comet :comet:',
+                    response['message'],
+                )
             return
+
         for _, coord, taskname in ateldbRecord.srctask:
             ## source information related
             srcname = self._longName_(coord)
@@ -148,22 +155,30 @@ class ATelVASTBot(SlackBot):
             linkLine = self._findVASTLink_(taskname)
             ## file related
             pdfPath = f'{ATELDIR}/ATEL{atelid}/multiweb_{taskname}.pdf'
-            self.replyFile(
-                file = pdfPath,
-                comment = f"*Source:* {srcname}\n{footLine}\n{linkLine}",
-                message = response['message'],
-            )
+            if dryrun:
+                print(f"*Source:* {srcname}\n{footLine}\n{linkLine}")
+                print(f'Send File - {pdfPath}')
+            else:
+                self.replyFile(
+                    file = pdfPath,
+                    comment = f"*Source:* {srcname}\n{footLine}\n{linkLine}",
+                    message = response['message'],
+                )
         ### post parsed atel to the thread ###
         if replyFormatHTML:
-            self.replyFile(
-                file = f'{ATELDIR}/ATEL{atelid}/coloredATel.png',
-                comment = 'You can refer to a formatted telegram here (objects parsed are highlighted)',
-                message = response['message']
-            )
+            if dryrun: 
+                print('You can refer to a formatted telegram here (objects parsed are highlighted)')
+                print(f'Send File - {ATELDIR}/ATEL{atelid}/coloredATel.png')
+            else:
+                self.replyFile(
+                    file = f'{ATELDIR}/ATEL{atelid}/coloredATel.png',
+                    comment = 'You can refer to a formatted telegram here (objects parsed are highlighted)',
+                    message = response['message']
+                )
 
-    def postAtel(self, atelid, manual=False):
-        response = self._postNewAtel_(atelid, manual=manual)
-        self._replySource_(response=response, atelid=atelid)
+    def postAtel(self, atelid, manual=False, dryrun=False):
+        response = self._postNewAtel_(atelid, manual=manual, dryrun=dryrun)
+        self._replySource_(response=response, atelid=atelid, dryrun=dryrun)
 
         
 
