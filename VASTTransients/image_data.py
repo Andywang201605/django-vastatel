@@ -401,12 +401,14 @@ def plot_archival_lightcurve(archival_measures, measurements=None):
     colors = {'AT20G':'C0','GLEAM':'C1','SUMSS':'C2','NVSS':'C3','TGSS':'C4','ASKAP':'C5','ASKAP_forced':'C6'}
 
     for i, row in archival_measures.iterrows():
-        if row['type'] == 1:
-            ax1.scatter(row['date'], row['flux'], color=colors[row['survey']])
-            ax2.scatter(row['freq'], row['flux'], color=colors[row['survey']])
-        else:
-            ax1.errorbar(row['date'], row['flux'], yerr=row['flux']*0.3, color=colors[row['survey']], uplims=True, marker='o')
-            ax2.errorbar(row['freq'], row['flux'], yerr=row['flux']*0.3, color=colors[row['survey']], uplims=True, marker='o')
+        try:
+            if row['type'] == 1:
+                ax1.scatter(row['date'], float(row['flux']), color=colors[row['survey']])
+                ax2.scatter(row['freq'], float(row['flux']), color=colors[row['survey']])
+            else:
+                ax1.errorbar(row['date'], row['flux'], yerr=float(row['flux'])*0.3, color=colors[row['survey']], uplims=True, marker='o')
+                ax2.errorbar(row['freq'], row['flux'], yerr=float(row['flux'])*0.3, color=colors[row['survey']], uplims=True, marker='o')
+        except: continue
 
     if isinstance(measurements, pd.DataFrame):
         for i, row in measurements.iterrows():
