@@ -8,6 +8,7 @@ from astropy.utils.data import clear_download_cache
 from astropy.stats import SigmaClip
 
 from astroquery.skyview import SkyView
+from astroquery.cadc import Cadc
 from astroquery.vizier import Vizier
 from astroquery.simbad import Simbad
 
@@ -124,6 +125,21 @@ def geturl_decam(ra, dec, radius, band='g'):
     link += f"&size={size}&layer=dr8&pixscale=0.262&bands={band}"
 
     return link
+
+### VLASS downloading - not just get link!
+def getimage_vlass(ra, dec, radius=60.):
+    coord = SkyCoord(ra, dec, unit=u.degree)
+    radius = radius * u.arcsec
+
+    cadc = Cadc()
+    hdulists = cadc.get_images(coord, radius, collection='VLASS')
+    return hdulists
+
+### get vlass epoch
+def _getVLASS_epoch(hdulist):
+    header = hdulist[0].header
+    return '{}.{}'.format(header['FILNAM01'], header['FILNAM02'])
+
     
 def download_archival(ra,dec,radius,survey,savedir, cache=True):
     '''
@@ -146,7 +162,16 @@ def download_archival(ra,dec,radius,survey,savedir, cache=True):
     if os.path.exists(fitspath):
         # print(fitspath, 'already exists!')
         return 0
-
+    
+    if survey == 'VLASS':
+        # this one will be different as there will be different versions of VLASS
+        hdulists = getimage_vlass(ra, dec, radius)
+        for hdulist in hdulists:
+            _survey = _getVLASS_epoch(hdulist)
+            fits_fname = '{}_{}.fits'.format(_survey, int(radius))
+            fitspath = os.path.join(savedir, fits_fname)
+            _save_hdulist(hdulist, fitspath)
+        return 0
 
     if survey == 'PanSTARRS':
         urls = geturl_PanSTARRS(ra, dec, size=radius*4,filters="g",format='fits')
