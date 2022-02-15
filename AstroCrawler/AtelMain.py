@@ -164,8 +164,9 @@ class AtelMonitor:
             streamlevel = logging.INFO,
         )
         running = True
+        runCount = 0
         while running:
-            self._sendStatus_()
+            if runCount % 12 == 0: self._sendStatus_(); runCount = 0
             ######################
             try: runList = self._getRunIDs_() # atelids for further running...
             except Exception as error: 
@@ -192,4 +193,5 @@ class AtelMonitor:
                         self.logger.error(f'{error} in `postAtel` where atelid = {atelid}')
             self.logger.info(f'waiting for {self.sleepTime} seconds to check for new atels...')
             time.sleep(self.sleepTime)
+            runCount += 1
             
