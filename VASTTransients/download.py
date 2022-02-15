@@ -25,6 +25,7 @@ import os
 def _save_hdulist(hdulist, fname, overwrite=True):
     hdulist.writeto(fname, overwrite=overwrite)
 
+### PanSTARRS download handling ###
 def getimages_PanSTARRS(ra,dec,size=240,filters="grizy"):
     
     """Query ps1filenames.py service to get a list of images
@@ -81,6 +82,7 @@ def geturl_PanSTARRS(ra, dec, size=240, output_size=None, filters="grizy", forma
             url.append(urlbase+filename)
     return url
 
+### Skymapper download handling ###
 def geturl_skymapper(ra, dec, radius):
         """Fetch cutout data via Skymapper API."""
 
@@ -101,6 +103,27 @@ def geturl_skymapper(ra, dec, radius):
         df = df[df.band == 'z']
         link = df.iloc[0].get_image
         return link
+
+### DECam LS download handling
+def geturl_decam(ra, dec, radius, band='g'):
+    """Fetch cutout data via DECam LS API.
+    credit: Joshua Pritchard
+
+    Params:
+    ----------
+    radius: float - cutout radius in arcsec
+    """
+
+    # Ensure requested image size is less than DECam maximum of 512x512
+    size = int(radius / 0.262)
+    if size > 512:
+       size = 512
+       radius = size * 0.262 / 3600
+
+    link = f"http://legacysurvey.org/viewer/fits-cutout?ra={ra}&dec={dec}"
+    link += f"&size={size}&layer=dr8&pixscale=0.262&bands={band}"
+
+    return link
     
 def download_archival(ra,dec,radius,survey,savedir, cache=True):
     '''
@@ -127,15 +150,20 @@ def download_archival(ra,dec,radius,survey,savedir, cache=True):
 
     if survey == 'PanSTARRS':
         urls = geturl_PanSTARRS(ra, dec, size=radius*4,filters="g",format='fits')
-        if len(urls) == 0:
-            return -1
+        if len(urls) == 0: return -1
         hdulist = fits.open(urls[0]); hdulists = [hdulist]
+
     elif survey == 'SkyMapper':
-        try:
-            url = geturl_skymapper(ra, dec, radius)
-        except:
-            return -1
+        try: url = geturl_skymapper(ra, dec, radius)
+        except: return -1
         hdulist = fits.open(url); hdulists = [hdulist]
+
+    elif survey == 'DECam':
+        try:
+            url = geturl_decam(ra, dec, radius)
+            hdulist = fits.open(url)
+            hdulists = [hdulist]
+        except: return -1
     else:
         try:
             hdulists = SkyView.get_images(position=f'{ra} {dec}',survey=[survey], radius=radius*u.arcsec,cache=cache)
