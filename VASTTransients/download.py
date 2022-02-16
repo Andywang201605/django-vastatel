@@ -11,6 +11,7 @@ from astroquery.skyview import SkyView
 from astroquery.cadc import Cadc
 from astroquery.vizier import Vizier
 from astroquery.simbad import Simbad
+from astroquery.image_cutouts.first import First
 
 import numpy as np
 import pandas as pd
@@ -132,7 +133,8 @@ def getimage_vlass(ra, dec, radius=60.):
     radius = radius * u.arcsec
 
     cadc = Cadc()
-    hdulists = cadc.get_images(coord, radius, collection='VLASS')
+    try: hdulists = cadc.get_images(coord, radius, collection='VLASS')
+    except: return -1 # likely source not in the VLASS footprint
     return hdulists
 
 ### get vlass epoch
@@ -166,6 +168,7 @@ def download_archival(ra,dec,radius,survey,savedir, cache=True):
     if survey == 'VLASS':
         # this one will be different as there will be different versions of VLASS
         hdulists = getimage_vlass(ra, dec, radius)
+        if isinstance(hdulists, int): return -1
         for hdulist in hdulists:
             _survey = _getVLASS_epoch(hdulist)
             fits_fname = '{}_{}.fits'.format(_survey, int(radius))
@@ -188,6 +191,12 @@ def download_archival(ra,dec,radius,survey,savedir, cache=True):
             url = geturl_decam(ra, dec, radius)
             hdulist = fits.open(url)
             hdulists = [hdulist]
+        except: return -1
+    elif survey == 'FIRST':
+        try:
+            coord = SkyCoord(ra, dec, unit=u.degree)
+            radius = radius * u.arcsec
+            hdulists = First.get_images(coord, image_size=2*radius)
         except: return -1
     else:
         try:

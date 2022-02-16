@@ -453,7 +453,7 @@ def plot_VAST_overlay(ra, dec, imagepath, measurements, images, index=0):
     fig, ax
     '''
     with fits.open(imagepath) as hdulist:
-        data = hdulist[index].data
+        data = np.squeeze(hdulist[index].data)
         header = hdulist[index].header
         wcs = WCS(header).celestial
 
@@ -506,7 +506,7 @@ def plot_multicut(ra, dec, imagepath, index=0):
     fig, ax
     '''
     with fits.open(imagepath) as hdulist:
-        data = hdulist[index].data
+        data = np.squeeze(hdulist[index].data)
         header = hdulist[index].header
         wcs = WCS(header).celestial
 

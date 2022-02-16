@@ -5,11 +5,13 @@ from .download import *
 
 from vasttools.query import Query
 
+import glob
+
 class PipelineSource:
     '''
     Run all analysis based on pipeline run result
     '''
-    def __init__(self, coord, measurements, images, sourcepath):
+    def __init__(self, coord, measurements, images, sourcepath, download_list):
         '''
         Initiate Function and variable checking for PipelineSource Object
 
@@ -42,6 +44,8 @@ class PipelineSource:
         # image path
         self.imagepath = os.path.join(self.sourcepath, 'img/')
         self._makepath(self.imagepath)
+        # download list
+        self.download_list = download_list
 
     def _makepath(self, path):
         '''
@@ -120,16 +124,10 @@ class PipelineSource:
         '''
         Download all archival data based on ./setups/multiwavelength_information.json
         '''
-        # load setup files
-        archivalradius_path = pkg_resources.resource_filename(
-            __name__, './setup/multiwavelength_information.json'
-        )
-        with open(archivalradius_path) as fp:
-            archivalradius = json.load(fp)
 
         download_archival_multithreading(
             self.ra, self.dec,
-            archivalradius,
+            self.download_list,
             self.imagepath,
             maxthreads=32
         )
@@ -165,25 +163,25 @@ class PipelineSource:
         fig = plot_archival_lightcurve(archival_measures, self.measurements)
         self._savefig(fig, os.path.join(self.imagepath, 'archival_lightcurve.png'))
 
+    def _getVLASS_download(self, radius):
+        '''
+        get epochs in VLASS that have been downloaded
+        '''
+        fileFormat = f'{self.imagepath}/VLASS?.?_{int(radius)}.fits'
+        return glob.glob(fileFormat)
+
     def plot_multiwavelength_overlay(self):
         '''
         plot multiwavelength results overlaid with radio countour
         '''
-        # load setup files
-        archivalradius_path = pkg_resources.resource_filename(
-            __name__, './setup/multiwavelength_information.json'
-        )
-        with open(archivalradius_path) as fp:
-            archivalradius = json.load(fp)
-
-        for survey in archivalradius:
-            for radius in archivalradius[survey]:
+        for survey, radius in self.download_list:
+            if survey == 'VLASS':
+                fitspaths = self._getVLASS_download(radius)
+            else:
                 survey = survey.replace(' ', '_')
-                fitspath = os.path.join(
-                    self.imagepath,
-                    f'{survey}_{radius}.fits'
-                )
+                fitspaths = [os.path.join(self.imagepath, f'{survey}_{radius}.fits')]
 
+            for fitspath in fitspaths:
                 try:
                     fig, ax = plot_VAST_overlay(
                         self.ra, self.dec,
@@ -193,7 +191,7 @@ class PipelineSource:
                 except:
                     continue
 
-                self._savefig(fig, os.path.join(self.imagepath, f'{survey}_{radius}.png'))
+                self._savefig(fig, fitspath.replace('.fits', '.png'))
 
     def plot_wise_cc(self):
         '''
@@ -209,13 +207,13 @@ class PipelineSource:
         fig, ax = plot_VAST_lightcurve(self.measurements)
         self._savefig(fig, os.path.join(self.imagepath, 'VASTlightcurve.png'))
 
-    def makewebpage(self):
-        pipeweb = PipelineWeb(
-            (self.ra, self.dec),
-            'source_web.html',
-            self.sourcepath
-        )
-        pipeweb.makefullweb()
+    # def makewebpage(self):
+    #     pipeweb = PipelineWeb(
+    #         (self.ra, self.dec),
+    #         'source_web.html',
+    #         self.sourcepath
+    #     )
+    #     pipeweb.makefullweb()
 
     def sourceAnalysis(self):
         ### Plot VAST cutouts
@@ -229,14 +227,14 @@ class PipelineSource:
 
         ### Download archival
         self.download_archival()
+        self.plot_multiwavelength_overlay()
+        self.plot_wise_cc()
+        
         self.fetch_archival_data()
         self.plot_archival_lightcurve()
-        self.plot_wise_cc()
-
-        self.plot_multiwavelength_overlay()
-
+        
         ###
-        self.makewebpage()
+        #self.makewebpage()
 
 def _getStokesVpath(StokesIpath):
         return StokesIpath.replace('STOKESI', 'STOKESV').replace('.I.', '.V.')
