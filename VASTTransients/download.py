@@ -293,9 +293,20 @@ def _getNearWISE_(nedTable):
         rowName = row['Object Name']
         if len(rowName) >= 4:
             if rowName[:4] == 'WISE': 
-                wisename = rowName; separation = row['Separation']*60
+                separation = row['Separation']*60
                 return rowName, separation
     return None, None
+
+def _getWISEVizier_(coord, radius = 5.0*u.arcsec):
+    '''Get WISEA from Vizier (there might be some name convention)'''
+    if isinstance(coord, list) or isinstance(coord, tuple):
+        coord = SkyCoord(*coord, unit=u.degree)
+    v = Vizier(columns=['*', '+_r'])
+    tablelist = v.query_region(coord, radius=radius, catalog='II/328/allwise')
+    if len(tablelist) == 0: return None, None # for nothing
+    wisename = 'WISEA {}'.format(tablelist[0][0]['AllWISE'])
+    separation = tablelist[0][0]['_r']
+    return wisename, separation
 
 def _addNedTag_(nedPhotDf):
     '''
@@ -308,8 +319,11 @@ def _addNedTag_(nedPhotDf):
     '''
     tagdict = {
         'From fitting to map, Profile-fit': 1,
+        'From fitting to map, Profile-fit;variable': 1,
         'Flux in fixed aperture, r=8.25" COG-corrected': 2,
+        'Flux in fixed aperture, r=8.25" COG-corrected;variable': 2,
         'Flux in fixed aperture, r=22.0" aperture': 3,
+        'Flux in fixed aperture, r=22.0" aperture;variable': 3,
     }
     
     tagLst = []
@@ -322,8 +336,6 @@ def _addNedTag_(nedPhotDf):
     nedPhotDf['PhotoTag'] = tagLst
     return nedPhotDf.copy(deep=True)
         
-        
-
 def _getWISE3_(nedPhotW3):
     '''
     Find out photometry data for WISE3
@@ -358,6 +370,7 @@ def _getWISE3_(nedPhotW3):
         photoMeasure = row['Photometry Measurement']
         photoMeasureErr = row['Uncertainty']
         photoType = row['PhotoTag']
+        if photoType == 0: continue # continue if photoType is 0 (i.e., not 1,2,3)
         if not np.isnan(photoMeasure): # check if it is detection
             photoMeasureErr = float(photoMeasureErr[3:])
             return True, photoMeasure, photoMeasureErr, photoType
@@ -369,7 +382,6 @@ def _getWISE3_(nedPhotW3):
         photoMeasureErr = row['Uncertainty'] # in the format of >xxx.xx
         return False, float(photoMeasureErr[1:]), 0.5, 1
     return None, 0, 0, -1 # last, there is no data
-
 
 def _getWISE12_(nedPhotSub, photoTag=1):
     '''
@@ -424,7 +436,9 @@ def getWISEMeasure(coord, radius = 5.0*u.arcsec):
     nedTable = _getNedTable_(coord, radius=radius)
     if nedTable is None: return None, None
     wisename, separation = _getNearWISE_(nedTable)
-    if wisename is None: return None, None
+    if wisename is None: 
+        wisename, separation = _getWISEVizier_(coord, radius)
+        if wisename is None: return None, None
     photoTab = Ned.get_table(wisename, table='photometry').to_pandas()
     return _ParseWISEPhot_(photoTab), separation
 
@@ -518,6 +532,7 @@ def _addWISEcolor_(ax, photoparse, color='darkred'):
     
     spanStyle = {'color':color, 'alpha':0.1,}
     markStyle = {'marker':'*', 'markersize':15, 'color': color}
+    if colorX is None or colorY is None: return ax
     if colorX[-1] is None and colorY[-1] is None:
         return ax # do nothing
     if colorX[-1] is None: # colorX is none
