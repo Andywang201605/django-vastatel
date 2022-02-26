@@ -7,6 +7,7 @@ from astropy import units as u
 from astropy.utils.data import clear_download_cache
 from astropy.stats import SigmaClip
 
+from astroquery.ipac.ned import Ned
 from astroquery.skyview import SkyView
 from astroquery.cadc import Cadc
 from astroquery.vizier import Vizier
@@ -274,69 +275,339 @@ def download_archival_multithreading(ra, dec, download_list, savedir, maxthreads
     ### clear cache
     clear_download_cache()
     
-### Function for wise color-color plot
-def plot_wise_cc(position, radius=5):
-    """
-    Plot a WISE color-color diagram with source at position location overlaid. (same as that in download module)
+#%% 
+### Functions for wise color-color plot based on Ned Query
+def _getNedTable_(coord, radius = 5.0*u.arcsec):
+    if isinstance(coord, list) or isinstance(coord, tuple):
+        coord = SkyCoord(*coord, unit=u.degree)
+    nedTable = Ned.query_region(coord, radius=radius).to_pandas()
+    
+    if len(nedTable) == 0: return None
+    return nedTable.sort_values('Separation')
 
+def _getNearWISE_(nedTable):
+    '''
+    get nearest wise source given a ned query result (already ordered by separation)
+    '''
+    for i, row in nedTable.iterrows():
+        rowName = row['Object Name']
+        if len(rowName) >= 4:
+            if rowName[:4] == 'WISE': 
+                wisename = rowName; separation = row['Separation']*60
+                return rowName, separation
+    return None, None
+
+def _addNedTag_(nedPhotDf):
+    '''
+    add tags for a ned WISE photometry dataframe based on `Spatial Mode` and `Qualifiers` columns
+    
     Params:
     ----------
-    position: SkyCoord, list or tuple
-        position of interest
-    radius: float or int, 5 by default
-        crossmatch radius with WISE catalogue
-
-    Returns:
-        fig, ax
-    """
-    if isinstance(position,tuple) or isinstance(position,list):
-        position = SkyCoord(*position, unit=u.deg)
-
-    v = Vizier(columns=['*', '+_r'])
-    tablelist = v.query_region(position, radius=radius * u.arcsec, catalog='II/328/allwise')
-    fig = plt.figure(figsize=(6, 6))
-    ax = fig.add_subplot(111)
+    nedPhotDf: pandas.core.frame.DataFrame
+        photometry dataframe from ned for WISE (can be the whole dataframe)
+    '''
+    tagdict = {
+        'From fitting to map, Profile-fit': 1,
+        'Flux in fixed aperture, r=8.25" COG-corrected': 2,
+        'Flux in fixed aperture, r=22.0" aperture': 3,
+    }
     
+    tagLst = []
+    for i, row in nedPhotDf.iterrows():
+        spatialMode = row['Spatial Mode']; qualifier = row['Qualifiers']
+        checkmsg = f'{spatialMode}, {qualifier}'
+        tag = tagdict.get(checkmsg)
+        if tag is None: tag = 0
+        tagLst.append(tag)
+    nedPhotDf['PhotoTag'] = tagLst
+    return nedPhotDf.copy(deep=True)
+        
+        
+
+def _getWISE3_(nedPhotW3):
+    '''
+    Find out photometry data for WISE3
+    Iterate through all available W3 photometry data, order for checking
+    - From fitting to map, profile-fit
+    - Flux in fixed aperture, r=8.25"
+    - Flux in fixed aperture, r=22.0"
+    If all available photometry data are upper limits
+    Choose one from fitting to map as the one upper limits
+    
+    Params:
+    ----------
+    nedPhotW3: pandas.core.frame.DataFrame
+        photometry dataframe from ned for WISE3 only
+        
+    Returns:
+    ----------
+    detection: Boolean/None
+        whether this is a detection or not, NoneType for there is no value
+    photoMeasure: float
+        photometry measurement for WISE3
+    photoMeasureErr: float
+        photometry measurement error for WISE3
+    photoType: integer
+        type of photometry (see `_addNedTag_` function), -1 for no data
+    '''
+    ### check if phototag column exists, sort the value then
+    if 'PhotoTag' not in nedPhotW3: nedPhotW3 = _addNedTag_(nedPhotW3)
+    nedPhotW3 = nedPhotW3.sort_values('PhotoTag')
+    
+    for i, row in nedPhotW3.iterrows():
+        photoMeasure = row['Photometry Measurement']
+        photoMeasureErr = row['Uncertainty']
+        photoType = row['PhotoTag']
+        if not np.isnan(photoMeasure): # check if it is detection
+            photoMeasureErr = float(photoMeasureErr[3:])
+            return True, photoMeasure, photoMeasureErr, photoType
+    # if code runs till here -  that means there is no any detection
+    # find the one with tag1 as the upper limit. if not, return nothing
+    subrow = nedPhotW3[nedPhotW3['PhotoTag'] == 1]
+    if len(subrow) > 0: # there is a row
+        row = subrow.iloc[0]
+        photoMeasureErr = row['Uncertainty'] # in the format of >xxx.xx
+        return False, float(photoMeasureErr[1:]), 0.5, 1
+    return None, 0, 0, -1 # last, there is no data
+
+
+def _getWISE12_(nedPhotSub, photoTag=1):
+    '''
+    Find out photometry data for WISE1 or WISE2 for a given `photoTag`
+    
+    '''
+    ### check if phototag column exists, sort the value then
+    if photoTag == -1: return None, 0, 0, -1
+    if 'PhotoTag' not in nedPhotSub: nedPhotWSub = _addNedTag_(nedPhotSub)
+    subrow = nedPhotSub[nedPhotSub['PhotoTag'] == photoTag]
+    if len(subrow) > 0:
+        row = subrow.iloc[0]
+        photoMeasure = row['Photometry Measurement']
+        photoMeasureErr = row['Uncertainty']
+        photoType = row['PhotoTag']
+        ### check if it is a detection
+        if not np.isnan(photoMeasure):
+            photoMeasureErr = float(photoMeasureErr[3:])
+            return True, photoMeasure, photoMeasureErr, photoType
+        else: # if it is not a detection
+            photoMeasureErr = row['Uncertainty'] # in the format of >xxx.xx
+            return False, float(photoMeasureErr[1:]), 0.5, photoType
+    ### if there is no corresponding value
+    return None, 0, 0, -1
+
+def _ParseWISEPhot_(nedPhot):
+    '''
+    Parse a ned WISE photometry table for a given source
+    
+    Params:
+    ----------
+    nedPhot: pandas.core.frame.DataFrame
+        photometry dataframe from ned
+        
+    Returns:
+    ----------
+    '''
+    nedPhot = _addNedTag_(nedPhot)
+    nedPhotW3 = nedPhot[nedPhot['Observed Passband'] == 'W3 (WISE)']
+    nedPhotW2 = nedPhot[nedPhot['Observed Passband'] == 'W2 (WISE)']
+    nedPhotW1 = nedPhot[nedPhot['Observed Passband'] == 'W1 (WISE)']
+    
+    ### parse WISE3 first
+    wise3tuple = _getWISE3_(nedPhotW3)
+    ### parse WISE2 and WISE1
+    wise2tuple = _getWISE12_(nedPhotW2, photoTag=wise3tuple[-1])
+    wise1tuple = _getWISE12_(nedPhotW1, photoTag=wise3tuple[-1])
+    
+    return wise1tuple, wise2tuple, wise3tuple
+    
+def getWISEMeasure(coord, radius = 5.0*u.arcsec):
+    nedTable = _getNedTable_(coord, radius=radius)
+    if nedTable is None: return None, None
+    wisename, separation = _getNearWISE_(nedTable)
+    if wisename is None: return None, None
+    photoTab = Ned.get_table(wisename, table='photometry').to_pandas()
+    return _ParseWISEPhot_(photoTab), separation
+
+def _ColorCalculate_(band1, band2):
+    '''
+    calculate `colorBand1 - colorBand2`
+    
+    Params:
+    ----------
+    band1, band2: tuple from `getWISEMeasure`
+        The content within each tuple is:
+        - whether it is a detection or not (None/True/False)
+        - flux measurement
+        - flux measurement error
+        - photometry type
+        
+    Returns:
+    ----------
+    color, colorErr, colorlimit
+    Note: colorlimit take value from [-1, 0, 1, None]
+        -1 for lower limit, 0 for an errorbar, 1 for upper limit, None for no data
+    '''
+    if band1[0] is None or band2[0] is None:
+        return None, None, None
+    if band1[0] == False and band2[0] is False: # both bands are lower limit
+        return None, None, None
+    ### at least one band is a detection
+    color = band1[1] - band2[1]
+    if band1[0] == False:
+        colorLimit = -1
+        colorErr = 0.5
+        return color, colorErr, colorLimit
+    if band2[0] == False:
+        colorLimit = 1
+        colorErr = 0.5
+        return color, colorErr, colorLimit
+    colorLimit = 0
+    colorErr = np.sqrt(band1[2]**2 + band2[2]**2)
+    return color, colorErr, colorLimit  
+
+def _getWISEbandcomment_(bandparse):
+    '''get comment for a single band'''
+    if bandparse[0] is None: return 'nan'
+    if bandparse[0] == True: return '{:.3f}'.format(bandparse[1])
+    if bandparse[0] == False: return '>{:.3f}'.format(bandparse[1])
+
+def _getWISEcomment_(photoparse):
+    
+    tagdict = {
+        -1: 'no WISE data within 5.0 arcsec',
+        1: 'From fitting to map, Profile-fit',
+        2: 'Flux in fixed aperture, r=8.25" COG-corrected',
+        3: 'Flux in fixed aperture, r=22.0" aperture',
+    }
+    
+    commentmsg = '{}\n'.format(tagdict[photoparse[0][-1]])
+    for i in range(3):
+        commentmsg += 'W{}:{} '.format(i+1, _getWISEbandcomment_(photoparse[i]))
+    return commentmsg
+    
+    
+
+def CalcWISEColor(photoparse):
+    '''
+    calculate W1-W2 and W2-W3 for color-color plot
+    
+    Returns:
+    ----------
+    
+    '''
+    
+    if photoparse is None: return None, None, 'no WISE data within 5.0 arcsec'
+    
+    ### form comments on WISE detections
+    commentmsg = _getWISEcomment_(photoparse)
+    
+    ### calculate colors
+    Xcolor, XcolorErr, XcolorLim = _ColorCalculate_(photoparse[1], photoparse[2]) # W2-W3
+    Ycolor, YcolorErr, YcolorLim = _ColorCalculate_(photoparse[0], photoparse[1]) # W2-W3
+    
+    return (
+        (Xcolor, XcolorErr, XcolorLim),
+        (Ycolor, YcolorErr, YcolorLim),
+        commentmsg,
+    )
+
+def _addWISEcolor_(ax, photoparse, color='darkred'):
+    colorX, colorY, comment = CalcWISEColor(photoparse)
+    
+    ax.set_title(comment)
+    
+    spanStyle = {'color':color, 'alpha':0.1,}
+    markStyle = {'marker':'*', 'markersize':15, 'color': color}
+    if colorX[-1] is None and colorY[-1] is None:
+        return ax # do nothing
+    if colorX[-1] is None: # colorX is none
+        if colorY[-1] == -1:
+            ax.axhspan(ymin=colorY[0], ymax=5, **spanStyle)
+            ax.errorbar(
+                x = 3, y = colorY[0], yerr=colorY[1], xerr=6, lolims=True, 
+                **markStyle,
+            )
+            return ax
+        if colorY[-1] == 0:
+            ax.axhspan(ymin=colorY[0]-colorY[1], ymax=colorY[0]+colorY[1], **spanStyle)
+            ax.errorbar(
+                x = 3, y = colorY[0], yerr = colorY[1], xerr=6, 
+                **markStyle,
+            )
+            return ax
+        if colorY[-1] == 1:
+            ax.axhspan(ymin=-1, ymax=colorY[0], **spanStyle)
+            ax.errorbar(
+                x = 3, y = colorY[0], yerr=colorY[1], xerr=6, uplims=True, 
+                **markStyle,
+            )
+            return ax
+        return ax
+    if colorY[-1] is None: # colorY is none
+        if colorX[-1] == -1:
+            ax.axvspan(xmin=colorX[0], xmax=8, **spanStyle)
+            ax.errorbar(
+                x = colorX[0], y = 1.75, xerr=colorX[1], yerr=6, xlolims=True, 
+                **markStyle,
+            )
+            return ax
+        if colorX[-1] == 0:
+            ax.axvspan(xmin=colorX[0]-colorX[1], xmax=colorX[0]+colorX[1], **spanStyle)
+            ax.errorbar(
+                x = colorX[0], y = 1.75, xerr = colorX[1], yerr=6, 
+                **markStyle,
+            )
+            return ax
+        if colorX[-1] == 1:
+            ax.axvspan(xmin=-1, xmax=colorX[0], **spanStyle)
+            ax.errorbar(
+                x = colorX[0], y = 1.75, xerr=colorX[1], yerr=6, xuplims=True, 
+                **markStyle,
+            )
+            return ax
+        return ax
+    ### for both colors are not none
+    uplim, lolim, xuplim, xlolim = False, False, False, False
+    if colorX[-1] == -1: xlolim = True
+    if colorX[-1] == 1: xuplim = True
+    if colorY[-1] == -1: lolim = True
+    if colorY[-1] == 1: uplim = True
+    
+    ax.errorbar(
+        x = colorX[0], y = colorY[0], xerr=colorX[1], yerr=colorY[1],
+        lolims=lolim, uplims=uplim, xlolims=xlolim, xuplims=xuplim,
+        **markStyle,
+    )
+    return ax
+
+def plot_wise_cc(coord, radius=5.0*u.arcsec):
+    ### query NED ###
+    photoparse, separation = getWISEMeasure(coord, radius = radius)
+    labelmsg = f'no data' if separation is None else f'{separation:.2f} arcsec away'
+
     ccplot_path = pkg_resources.resource_filename(
         __name__, "./setup/wise_cc.png"
     )
-
     
-    if len(tablelist) > 0:
-        result = tablelist[0][0]
-        resultcoord = SkyCoord(ra=result['RAJ2000'], dec=result['DEJ2000'], unit=u.deg)
-        sep = resultcoord.separation(position).arcsec
-        source = pd.Series({'3.4 micron': result['W1mag'],
-                            '4.6 micron': result['W2mag'],
-                            '12 micron': result['W3mag']})
+    im = plt.imread(ccplot_path)
+    fig = plt.figure(figsize=(6, 6), facecolor='white')
+    ax = fig.add_subplot(111)
 
-        w4_12 = source['4.6 micron'] - source['12 micron']
-        w3_4 = source['3.4 micron'] - source['4.6 micron']
-
-        ax.scatter(w4_12, w3_4, marker='*', color='magenta', s=100, label=result['AllWISE'])
-        im = plt.imread(ccplot_path)
-        ax.imshow(im, extent=[-1, 7, -0.5, 4], aspect=2)
-
-        ax.set_xticks([0, 2, 4, 6])
-        ax.set_yticks([0, 1, 2, 3, 4])
-        ax.set_xlabel(r'[$4.6\mu m] - [12\mu m$] mag')
-        ax.set_ylabel(r'[$3.4\mu m] - [4.6\mu m$] mag')
-        ax.set_xlim(-1, 7)
-        ax.set_ylim(-0.5, 4)
-        ax.set_title('{} - {:.1f} arcsec separation'.format(result["AllWISE"], sep))
-        ax.legend()
-    else:
-        im = plt.imread(ccplot_path)
-        ax.imshow(im, extent=[-1, 7, -0.5, 4], aspect=2)
-
-        ax.set_xticks([0, 2, 4, 6])
-        ax.set_yticks([0, 1, 2, 3, 4])
-        ax.set_xlabel(r'[$4.6\mu m] - [12\mu m$] mag')
-        ax.set_ylabel(r'[$3.4\mu m] - [4.6\mu m$] mag')
-        ax.set_title(f"No WISE crossmatch")
-        ax.legend()
-
+    ax.imshow(im, extent=[-1, 7, -0.5, 4], aspect=2)
+    ax = _addWISEcolor_(ax, photoparse, color='darkred')
+    
+    ax.set_xticks([0, 2, 4, 6])
+    ax.set_yticks([0, 1, 2, 3, 4])
+    ax.set_xlabel(r'[$4.6\mu m] - [12\mu m$] mag')
+    ax.set_ylabel(r'[$3.4\mu m] - [4.6\mu m$] mag')
+    ax.set_xlim(-1, 7)
+    ax.set_ylim(-0.5, 4)
+    
+    ax.scatter([], [], marker='*', color='darkred', label=labelmsg)
+    ax.legend(fontsize=12)
+    
     return fig, ax
+#%%
 
 ### Functions for getting archival crossmatch
 def get_archival_crossmatch(coord, catalog, radius):
